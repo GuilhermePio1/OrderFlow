@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: orderflow-postgres
+    environment:
+      POSTGRES_USER: orderflow
+      POSTGRES_PASSWORD: orderflow
+      POSTGRES_MULTIPLE_DATABASES: orderflow_orders,orderflow_payments,orderflow_inventory,orderflow_notifications
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh:ro
+    networks:
+      - orderflow-network
+
+  mongodb:
+    image: mongo:8
+    container_name: orderflow-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: orderflow
+      MONGO_INITDB_ROOT_PASSWORD: orderflow
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - orderflow-network
+
+  redis:
+    image: redis:8
+    container_name: orderflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - orderflow-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: orderflow-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: orderflow-local-cluster
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - orderflow-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: orderflow-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-orderflow.json:/opt/keycloak/data/import/realm-orderflow.json:ro
+    networks:
+      - orderflow-network
+
+volumes:
+  postgres-data:
+  mongo-data:
+  redis-data:
+  kafka-data:
+
+networks:
+    orderflow-network:
+      driver: bridge

@@ -1,0 +1,52 @@
+# Build
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Terraform
+infrastructure/terraform/**/.terraform/
+infrastructure/terraform/**/*.tfstate
+infrastructure/terraform/**/*.tfstate.*
+infrastructure/terraform/**/*.tfvars
+
+# Coverage
+coverage/
+jacoco.exec
+
+# Docker / Local Data
+.docker-data/
+docker/volumes/
+
+# Java Crash Reports
+hs_err_pid*
+replay_pid*

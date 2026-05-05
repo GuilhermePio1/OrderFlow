@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: notification-service
+  profiles:
+    default: local
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orderflow_notifications
+    username: orderflow
+    password: orderflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  cloud:
+    stream:
+      kafka:
+        binder:
+          brokers: localhost:9092
+
+server:
+  port: 8084
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
