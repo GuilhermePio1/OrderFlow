@@ -19,6 +19,10 @@ public record OrderId(UUID value) {
         return new OrderId(value);
     }
 
+    public static OrderId of(String value) {
+        return new OrderId(UUID.fromString(value));
+    }
+
     @Override
     public @NonNull String toString() {
         return value.toString();
