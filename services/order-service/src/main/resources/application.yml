@@ -4,17 +4,13 @@ spring:
   profiles:
     default: local
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/orderflow_orders
+    url: r2dbc:postgresql://localhost:5433/orderflow_orders
     username: orderflow
     password: orderflow
   flyway:
-    enabled: true
-    url: jdbc:postgresql://localhost:5432/orderflow_orders
+    url: jdbc:postgresql://localhost:5433/orderflow_orders
     user: orderflow
     password: orderflow
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-    schemas: public
   cloud:
     stream:
       kafka:
