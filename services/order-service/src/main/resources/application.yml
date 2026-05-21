@@ -12,10 +12,36 @@ spring:
     user: orderflow
     password: orderflow
   cloud:
+    function:
+      definition: paymentEvents;inventoryEvents
     stream:
+      bindings:
+        paymentEvents-in-0:
+          destination: payments.events
+          group: order-service
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-multiplier: 2.0
+        inventoryEvents-in-0:
+          destination: inventory.events
+          group: order-service
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-multiplier: 2.0
       kafka:
         binder:
           brokers: localhost:9092
+        bindings:
+          paymentEvents-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: order-service.payments.events.dlq
+          inventoryEvents-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: order-service.inventory.events.dlq
   security:
     oauth2:
       resourceserver:

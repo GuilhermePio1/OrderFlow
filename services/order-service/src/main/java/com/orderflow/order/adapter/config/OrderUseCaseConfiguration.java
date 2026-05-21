@@ -1,7 +1,9 @@
 package com.orderflow.order.adapter.config;
 
 import com.orderflow.order.application.usecase.CancelOrderUseCase;
+import com.orderflow.order.application.usecase.ConfirmOrderPaymentUseCase;
 import com.orderflow.order.application.usecase.PlaceOrderUseCase;
+import com.orderflow.order.application.usecase.ReserveOrderInventoryUseCase;
 import com.orderflow.order.domain.repository.OrderRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,5 +28,15 @@ class OrderUseCaseConfiguration {
     @Bean
     CancelOrderUseCase cancelOrderUseCase(OrderRepository orderRepository) {
         return new CancelOrderUseCase(orderRepository);
+    }
+
+    @Bean
+    ConfirmOrderPaymentUseCase confirmOrderPaymentUseCase(OrderRepository orderRepository) {
+        return new ConfirmOrderPaymentUseCase(orderRepository);
+    }
+
+    @Bean
+    ReserveOrderInventoryUseCase reserveOrderInventoryUseCase(OrderRepository orderRepository) {
+        return new ReserveOrderInventoryUseCase(orderRepository);
     }
 }
