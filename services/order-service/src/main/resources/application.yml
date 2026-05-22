@@ -48,6 +48,11 @@ spring:
         jwt:
           issuer-uri: http://localhost:8080/realms/orderflow
 
+orderflow:
+  security:
+    # Audiences aceitas no claim `aud` do JWT (lista separada por vírgula).
+    audiences: order-service
+
 server:
   port: 8081
 

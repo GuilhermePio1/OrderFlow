@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
@@ -24,6 +25,7 @@ import java.util.Map;
  *
  * <ul>
  *   <li>agregado inexistente → 404;</li>
+ *   <li>acesso a recurso de outro cliente (ABAC) → 403;</li>
  *   <li>conflito de concorrência otimista / transição inválida de
  *       estado → 409 (o cliente pode reidratar e reenviar);</li>
  *   <li>violação de invariante de domínio ou entrada malformada →
@@ -55,6 +57,13 @@ class OrderRestExceptionHandler {
     ResponseEntity<ProblemDetail> handleInvalidStateTransition(InvalidOrderStateTransitionException ex) {
         log.debug("Invalid state transition: {}", ex.getMessage());
         return problem(HttpStatus.CONFLICT, "Invalid order state transition", ex.getMessage());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return problem(HttpStatus.FORBIDDEN, "Access denied",
+                "You are not allowed to access this resource.");
     }
 
     @ExceptionHandler(DomainException.class)
