@@ -7,7 +7,7 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: jdbc:postgresql://localhost:5432/orderflow_payments
+    url: jdbc:postgresql://localhost:5433/orderflow_payments
     username: orderflow
     password: orderflow
   jpa:
