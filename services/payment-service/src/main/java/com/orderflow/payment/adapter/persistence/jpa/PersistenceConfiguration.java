@@ -1,5 +1,6 @@
 package com.orderflow.payment.adapter.persistence.jpa;
 
+import com.orderflow.payment.domain.repository.PaymentRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -27,5 +28,15 @@ class PersistenceConfiguration {
     @Bean
     PaymentEventCodec paymentEventCodec() {
         return PaymentEventCodec.withDefaultObjectMapper();
+    }
+
+    @Bean
+    PaymentRepository paymentRepository(
+            PaymentJpaSpringRepository payments,
+            OutboxJpaSpringRepository outbox,
+            PaymentEventCodec codec,
+            Clock clock
+    ) {
+        return new JpaPaymentRepository(payments, outbox, codec, clock);
     }
 }
