@@ -29,6 +29,9 @@ server:
   port: 8082
 
 management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
@@ -38,10 +41,26 @@ management:
       probes:
         enabled: true
 
+orderflow:
+  payment:
+    gateway: ${PAYMENT_GATEWAY:fake}
+    stripe:
+      base-url: ${STRIPE_BASE_URL:https://api.stripe.com}
+      secret-key: ${STRIPE_SECRET_KEY:}
+      connection-timeout: 2s
+      read-timeout: 5s
+
 resilience4j:
   circuitbreaker:
     instances:
       payment-gateway:
+        slidingWindowType: COUNT_BASED
         slidingWindowSize: 20
+        minimumNumberOfCalls: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        # Apenas falhas técnicas abrem o circuito; declínios de negócio
+        # retornam normalmente e não são exceções.
+        recordExceptions:
+          - com.orderflow.payment.application.port.PaymentGatewayException
