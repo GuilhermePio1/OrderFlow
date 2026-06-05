@@ -4,6 +4,7 @@ import com.orderflow.payment.domain.exception.ConcurrencyConflictException;
 import com.orderflow.payment.domain.model.Payment;
 import com.orderflow.payment.domain.model.PaymentStatus;
 import com.orderflow.payment.domain.model.valueobject.*;
+import com.orderflow.payment.domain.repository.PaymentRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaPaymentRepository.class, PersistenceConfiguration.class})
+@Import({PersistenceConfiguration.class})
 @DisplayName("JpaPaymentRepository — integração")
 class JpaPaymentRepositoryIntegrationTest {
 
@@ -60,7 +61,7 @@ class JpaPaymentRepositoryIntegrationTest {
     }
 
     @Autowired
-    private JpaPaymentRepository repository;
+    private PaymentRepository repository;
 
     @Autowired
     private OutboxJpaSpringRepository outbox;
