@@ -15,10 +15,26 @@ spring:
       ddl-auto: validate
     open-in-view: false
   cloud:
+    function:
+      definition: orderEvents
     stream:
+      bindings:
+        # Consome OrderPlaced do contexto Ordering — gatilho da saga.
+        orderEvents-in-0:
+          destination: orders.events
+          group: payment-service
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-multiplier: 2.0
       kafka:
         binder:
           brokers: localhost:9092
+        bindings:
+          orderEvents-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: payment-service.orders.events.dlq
   security:
     oauth2:
       resourceserver:
@@ -44,9 +60,12 @@ management:
 orderflow:
   payment:
     gateway: ${PAYMENT_GATEWAY:fake}
+    # OrderPlaced não carrega o meio de pagamento no contrato atual do Ordering;
+    # a borda de mensageria autoriza com este padrão (vide OrderEventHandler).
+    default-method: ${PAYMENT_DEFAULT_METHOD:CREDIT_CARD}
     stripe:
       base-url: ${STRIPE_BASE_URL:https://api.stripe.com}
-      secret-key: ${STRIPE_SECRET_KEY:}
+      secret-key: ${STRIPE_SECRET_KEY:just-for-tests}
       connection-timeout: 2s
       read-timeout: 5s
 

@@ -107,16 +107,23 @@ services:
       kafka-connect:
         condition: service_healthy
     volumes:
-      - ./kafka-connect/order-outbox-connector.json:/connector.json:ro
+      - ./kafka-connect/order-outbox-connector.json:/order-connector.json:ro
+      - ./kafka-connect/payment-outbox-connector.json:/payment-connector.json:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
         echo "Registering Debezium order-outbox connector...";
         curl -fsS -X PUT \
           -H "Content-Type: application/json" \
-          --data @/connector.json \
+          --data @/order-connector.json \
           http://kafka-connect:8083/connectors/order-outbox-connector/config \
-          && echo "" && echo "Connector registered."
+          && echo "" && echo "Order connector registered.";
+        echo "Registering Debezium payment-outbox connector...";
+        curl -fsS -X PUT \
+          -H "Content-Type: application/json" \
+          --data @/payment-connector.json \
+          http://kafka-connect:8083/connectors/payment-outbox-connector/config \
+          && echo "" && echo "Payment connector registered."
     restart: "no"
     networks:
       - orderflow-network
