@@ -1,0 +1,210 @@
+# OrderFlow local stack — Kafka (KRaft), PostgreSQL, Debezium Connect,
+# Schema Registry and the observability stack (Prometheus, Grafana, Tempo, Loki).
+#
+# Run from the repository root: `docker compose up -d`
+# (the root docker-compose.yml includes this file).
+#
+# Host-port map (application services run on the host via `./gradlew bootRunAll`
+# and occupy 8080-8085, so infra avoids that range):
+#
+#   Kafka broker        localhost:9092
+#   PostgreSQL          localhost:5432
+#   Schema Registry     localhost:8090  (8081 is order-service on the host)
+#   Debezium Connect    localhost:8086  (8083 is inventory-service on the host;
+#                                        inside the network it is connect:8083)
+#   Kafka UI            localhost:8089
+#   Grafana             localhost:3000  (admin/admin)
+#   Prometheus          localhost:9090
+#   Tempo               localhost:3200 (query) / 4317-4318 (OTLP ingest)
+#   Loki                localhost:3100
+
+name: orderflow
+
+services:
+  kafka:
+    image: apache/kafka:4.2.1
+    container_name: orderflow-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:29093,EXTERNAL://:9092
+      # Containers reach the broker at kafka:29092; host processes at localhost:9092.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    image: postgres:18
+    container_name: orderflow-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: orderflow
+      POSTGRES_PASSWORD: orderflow
+      POSTGRES_DB: orderflow
+    # Logical replication is required by the Debezium outbox connectors (ADR-0003).
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=8
+      - -c
+      - max_replication_slots=8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/10-init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderflow -d orderflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.0.0
+    container_name: orderflow-schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8090:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      # BACKWARD is the compatibility contract documented in the README/ADRs.
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  connect:
+    image: quay.io/debezium/connect:3.3
+    container_name: orderflow-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8086:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: orderflow-connect
+      CONFIG_STORAGE_TOPIC: orderflow.connect.configs
+      OFFSET_STORAGE_TOPIC: orderflow.connect.offsets
+      STATUS_STORAGE_TOPIC: orderflow.connect.status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: orderflow-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8089:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: orderflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: orderflow-prometheus
+    ports:
+      - "9090:9090"
+    # host-gateway lets Prometheus scrape the Spring services running on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    container_name: orderflow-tempo
+    user: root
+    ports:
+      - "3200:3200"   # query API (Grafana datasource)
+      - "4317:4317"   # OTLP gRPC ingest
+      - "4318:4318"   # OTLP HTTP ingest
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    command:
+      - -config.file=/etc/tempo/tempo.yaml
+
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: orderflow-loki
+    user: root
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: orderflow-grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  kafka-data:
+  postgres-data:
+  prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:
