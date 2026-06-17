@@ -3,6 +3,8 @@ package com.orderflow.payment.adapter.messaging.kafka;
 import com.orderflow.payment.application.InMemoryPaymentRepository;
 import com.orderflow.payment.application.ScriptedPaymentGateway;
 import com.orderflow.payment.application.usecase.AuthorizePaymentUseCase;
+import com.orderflow.payment.application.usecase.CapturePaymentUseCase;
+import com.orderflow.payment.application.usecase.CompensatePaymentUseCase;
 import com.orderflow.payment.domain.event.PaymentAuthorized;
 import com.orderflow.payment.domain.event.PaymentEvent;
 import com.orderflow.payment.domain.event.PaymentFailed;
@@ -43,10 +45,21 @@ class OrderEventHandlerTest {
     }
 
     private OrderEventHandler handlerWith(ScriptedPaymentGateway gateway) {
+        return handlerWith(gateway, PaymentMethod.CREDIT_CARD);
+    }
+
+    private OrderEventHandler handlerWith(ScriptedPaymentGateway gateway, PaymentMethod method) {
         return new OrderEventHandler(
                 new AuthorizePaymentUseCase(repository, gateway, CLOCK),
+                new CapturePaymentUseCase(repository, gateway),
+                new CompensatePaymentUseCase(repository, gateway),
                 InboundEventDeserializer.withDefaultObjectMapper(),
-                PaymentMethod.CREDIT_CARD);
+                method);
+    }
+
+    /** Coloca e autoriza um pagamento para o pedido, ponto de partida da captura/compensação. */
+    private void placeAndAuthorize(OrderEventHandler handler) {
+        handler.handle(OrderEventHandler.ORDER_PLACED, orderPlacedJson(ORDER_ID, CUSTOMER_ID, "149.90", "BRL"));
     }
 
     @Nested
@@ -132,6 +145,62 @@ class OrderEventHandlerTest {
     }
 
     @Nested
+    @DisplayName("OrderConfirmed → captura")
+    class OnOrderConfirmed {
+
+        @Test
+        @DisplayName("captura o pagamento autorizado e publica PaymentCaptured")
+        void capturesPayment() {
+            ScriptedPaymentGateway gateway = ScriptedPaymentGateway.approving(GW_TX, AUTH_CODE);
+            OrderEventHandler handler = handlerWith(gateway);
+            placeAndAuthorize(handler);
+
+            handler.handle(OrderEventHandler.ORDER_CONFIRMED, orderConfirmedJson(ORDER_ID));
+
+            Payment stored = repository.findByOrderId(OrderId.of(ORDER_ID)).orElseThrow();
+            assertThat(stored.status()).isEqualTo(PaymentStatus.CAPTURED);
+            assertThat(gateway.captures()).hasSize(1);
+            assertThat(gateway.lastCapture().gatewayTransactionId()).isEqualTo(GW_TX);
+        }
+    }
+
+    @Nested
+    @DisplayName("OrderCancelled → compensação")
+    class OnOrderCancelled {
+
+        @Test
+        @DisplayName("pagamento apenas autorizado é cancelado (void)")
+        void voidsAuthorizedPayment() {
+            ScriptedPaymentGateway gateway = ScriptedPaymentGateway.approving(GW_TX, AUTH_CODE);
+            OrderEventHandler handler = handlerWith(gateway);
+            placeAndAuthorize(handler);
+
+            handler.handle(OrderEventHandler.ORDER_CANCELLED, orderCancelledJson(ORDER_ID, "OUT_OF_STOCK"));
+
+            Payment stored = repository.findByOrderId(OrderId.of(ORDER_ID)).orElseThrow();
+            assertThat(stored.status()).isEqualTo(PaymentStatus.VOIDED);
+            assertThat(gateway.voids()).hasSize(1);
+            assertThat(gateway.refunds()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("pagamento já capturado é estornado (refund)")
+        void refundsCapturedPayment() {
+            ScriptedPaymentGateway gateway = ScriptedPaymentGateway.approving(GW_TX, AUTH_CODE);
+            OrderEventHandler handler = handlerWith(gateway);
+            placeAndAuthorize(handler);
+            handler.handle(OrderEventHandler.ORDER_CONFIRMED, orderConfirmedJson(ORDER_ID));
+
+            handler.handle(OrderEventHandler.ORDER_CANCELLED, orderCancelledJson(ORDER_ID, "CUSTOMER_REQUESTED"));
+
+            Payment stored = repository.findByOrderId(OrderId.of(ORDER_ID)).orElseThrow();
+            assertThat(stored.status()).isEqualTo(PaymentStatus.REFUNDED);
+            assertThat(stored.refundedAmount()).isEqualTo(Money.of("149.90", "BRL"));
+            assertThat(gateway.refunds()).hasSize(1);
+        }
+    }
+
+    @Nested
     @DisplayName("roteamento e robustez")
     class Routing {
 
@@ -187,10 +256,7 @@ class OrderEventHandlerTest {
     @DisplayName("o meio de pagamento padrão configurado é aplicado")
     void appliesConfiguredDefaultMethod() {
         ScriptedPaymentGateway gateway = ScriptedPaymentGateway.approving(GW_TX, AUTH_CODE);
-        OrderEventHandler handler = new OrderEventHandler(
-                new AuthorizePaymentUseCase(repository, gateway, CLOCK),
-                InboundEventDeserializer.withDefaultObjectMapper(),
-                PaymentMethod.PIX);
+        OrderEventHandler handler = handlerWith(gateway, PaymentMethod.PIX);
 
         handler.handle(OrderEventHandler.ORDER_PLACED, orderPlacedJson(ORDER_ID, CUSTOMER_ID, "149.90", "BRL"));
 
@@ -211,5 +277,29 @@ class OrderEventHandlerTest {
                 }
                 """.formatted(UUID.randomUUID(), orderId, customerId, amount, currency)
                 .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] orderConfirmedJson(UUID orderId) {
+        return """
+                {
+                  "eventId": "%s",
+                  "orderId": {"value": "%s"},
+                  "occurredAt": "2025-01-15T10:00:00Z",
+                  "schemaVersion": 1
+                }
+                """.formatted(UUID.randomUUID(), orderId).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] orderCancelledJson(UUID orderId, String reason) {
+        return """
+                {
+                  "eventId": "%s",
+                  "orderId": {"value": "%s"},
+                  "reason": "%s",
+                  "details": "compensação da saga",
+                  "occurredAt": "2025-01-15T10:00:00Z",
+                  "schemaVersion": 1
+                }
+                """.formatted(UUID.randomUUID(), orderId, reason).getBytes(StandardCharsets.UTF_8);
     }
 }

@@ -1,6 +1,8 @@
 package com.orderflow.payment.adapter.messaging.kafka;
 
 import com.orderflow.payment.application.usecase.AuthorizePaymentUseCase;
+import com.orderflow.payment.application.usecase.CapturePaymentUseCase;
+import com.orderflow.payment.application.usecase.CompensatePaymentUseCase;
 import com.orderflow.payment.domain.model.valueobject.PaymentMethod;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -44,10 +46,13 @@ class OrderEventConsumerConfiguration {
     @Bean
     OrderEventHandler orderEventHandler(
             AuthorizePaymentUseCase authorizePayment,
+            CapturePaymentUseCase capturePayment,
+            CompensatePaymentUseCase compensatePayment,
             InboundEventDeserializer deserializer,
             @Value("${orderflow.payment.default-method:CREDIT_CARD}") PaymentMethod defaultMethod
     ) {
-        return new OrderEventHandler(authorizePayment, deserializer, defaultMethod);
+        return new OrderEventHandler(
+                authorizePayment, capturePayment, compensatePayment, deserializer, defaultMethod);
     }
 
     @Bean

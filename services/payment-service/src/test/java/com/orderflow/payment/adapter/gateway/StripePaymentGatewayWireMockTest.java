@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.orderflow.payment.application.port.PaymentGateway.AuthorizationRequest;
 import com.orderflow.payment.application.port.PaymentGateway.AuthorizationResult;
+import com.orderflow.payment.application.port.PaymentGateway.CaptureRequest;
+import com.orderflow.payment.application.port.PaymentGateway.RefundRequest;
+import com.orderflow.payment.application.port.PaymentGateway.VoidRequest;
 import com.orderflow.payment.application.port.PaymentGatewayException;
 import com.orderflow.payment.domain.event.PaymentFailed.FailureReason;
 import com.orderflow.payment.domain.model.valueobject.*;
@@ -38,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StripePaymentGatewayWireMockTest {
 
     private static final String PATH = "/v1/payment_intents";
+    private static final String REFUNDS_PATH = "/v1/refunds";
     private static final String SECRET_KEY = "sk_test_123";
+    private static final GatewayTransactionId GW_TX = GatewayTransactionId.of("ch_3Nabc");
 
     private static final OrderId ORDER_ID = OrderId.of(UUID.randomUUID());
     private static final CustomerId CUSTOMER_ID = CustomerId.of(UUID.randomUUID());
@@ -289,6 +294,104 @@ class StripePaymentGatewayWireMockTest {
 
             // O WireMock só viu as 4 primeiras: o short-circuit não tocou a rede.
             verify(exactly(4), postRequestedFor(urlEqualTo(PATH)));
+        }
+    }
+
+    @Nested
+    @DisplayName("captura")
+    class Capture {
+
+        private final String capturePath = PATH + "/" + GW_TX.value() + "/capture";
+
+        @Test
+        @DisplayName("traduz a captura para POST /capture com amount_to_capture e Idempotency-Key própria")
+        void translatesCaptureRequest() {
+            stubFor(post(urlEqualTo(capturePath)).willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"id\":\"pi_1\",\"status\":\"succeeded\"}")));
+
+            gateway().capture(new CaptureRequest(PAYMENT_ID, GW_TX, AMOUNT));
+
+            verify(postRequestedFor(urlEqualTo(capturePath))
+                    .withHeader("Idempotency-Key", equalTo(PAYMENT_ID + ":capture"))
+                    .withHeader("Content-Type", containing("application/x-www-form-urlencoded"))
+                    .withRequestBody(containing("amount_to_capture=14990")));
+        }
+
+        @Test
+        @DisplayName("um 5xx vira PaymentGatewayException")
+        void serverErrorBecomesGatewayException() {
+            stubFor(post(urlEqualTo(capturePath)).willReturn(aResponse().withStatus(503)));
+
+            assertThatThrownBy(() -> gateway().capture(new CaptureRequest(PAYMENT_ID, GW_TX, AMOUNT)))
+                    .isInstanceOf(PaymentGatewayException.class)
+                    .hasMessageContaining("captura");
+        }
+    }
+
+    @Nested
+    @DisplayName("estorno")
+    class Refund {
+
+        @Test
+        @DisplayName("traduz o estorno para POST /v1/refunds referenciando a transação")
+        void translatesRefundRequest() {
+            stubFor(post(urlEqualTo(REFUNDS_PATH)).willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"id\":\"re_1\",\"status\":\"succeeded\"}")));
+
+            gateway().refund(new RefundRequest(PAYMENT_ID, GW_TX, AMOUNT, "OUT_OF_STOCK"));
+
+            verify(postRequestedFor(urlEqualTo(REFUNDS_PATH))
+                    .withHeader("Idempotency-Key", equalTo(PAYMENT_ID + ":refund"))
+                    .withRequestBody(containing("charge=" + GW_TX.value()))
+                    .withRequestBody(containing("amount=14990"))
+                    .withRequestBody(containing("metadata%5Breason%5D=OUT_OF_STOCK")));
+        }
+
+        @Test
+        @DisplayName("um 5xx vira PaymentGatewayException")
+        void serverErrorBecomesGatewayException() {
+            stubFor(post(urlEqualTo(REFUNDS_PATH)).willReturn(aResponse().withStatus(500)));
+
+            assertThatThrownBy(() ->
+                    gateway().refund(new RefundRequest(PAYMENT_ID, GW_TX, AMOUNT, "x")))
+                    .isInstanceOf(PaymentGatewayException.class)
+                    .hasMessageContaining("estorno");
+        }
+    }
+
+    @Nested
+    @DisplayName("cancelamento de autorização")
+    class VoidAuthorization {
+
+        private final String cancelPath = PATH + "/" + GW_TX.value() + "/cancel";
+
+        @Test
+        @DisplayName("traduz o cancelamento para POST /cancel com Idempotency-Key própria")
+        void translatesVoidRequest() {
+            stubFor(post(urlEqualTo(cancelPath)).willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"id\":\"pi_1\",\"status\":\"canceled\"}")));
+
+            gateway().voidAuthorization(new VoidRequest(PAYMENT_ID, GW_TX, "OUT_OF_STOCK"));
+
+            verify(postRequestedFor(urlEqualTo(cancelPath))
+                    .withHeader("Idempotency-Key", equalTo(PAYMENT_ID + ":void")));
+        }
+
+        @Test
+        @DisplayName("um 5xx vira PaymentGatewayException")
+        void serverErrorBecomesGatewayException() {
+            stubFor(post(urlEqualTo(cancelPath)).willReturn(aResponse().withStatus(502)));
+
+            assertThatThrownBy(() ->
+                    gateway().voidAuthorization(new VoidRequest(PAYMENT_ID, GW_TX, "x")))
+                    .isInstanceOf(PaymentGatewayException.class)
+                    .hasMessageContaining("cancelamento");
         }
     }
 }

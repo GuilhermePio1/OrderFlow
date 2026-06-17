@@ -19,7 +19,9 @@ spring:
       definition: orderEvents
     stream:
       bindings:
-        # Consome OrderPlaced do contexto Ordering — gatilho da saga.
+        # Consome o ciclo de vida do pedido (Ordering): OrderPlaced autoriza,
+        # OrderConfirmed captura, OrderCancelled compensa (void/refund) — a
+        # participação do Payment na saga coreografada.
         orderEvents-in-0:
           destination: orders.events
           group: payment-service
