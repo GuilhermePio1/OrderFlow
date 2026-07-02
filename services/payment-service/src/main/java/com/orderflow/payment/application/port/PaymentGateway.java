@@ -35,6 +35,34 @@ public interface PaymentGateway {
     AuthorizationResult authorize(AuthorizationRequest request);
 
     /**
+     * Captura uma autorização previamente concedida, movendo os fundos para
+     * liquidação. Disparada quando o pedido é confirmado (consumo de
+     * {@code OrderConfirmed}).
+     *
+     * <p>Diferente da autorização, não há "declínio de negócio" aqui: capturar
+     * uma autorização válida ou sucede ou esbarra numa condição técnica. Por isso
+     * falhas (timeout, 5xx, autorização expirada no provedor) propagam como
+     * {@link PaymentGatewayException} — sinalizando uma condição potencialmente
+     * transitória que o caller pode retentar.
+     */
+    void capture(CaptureRequest request);
+
+    /**
+     * Estorna (total ou parcialmente) uma captura. Usado pela saga de
+     * compensação quando o pagamento já fora capturado e o pedido é cancelado.
+     * Falhas técnicas propagam como {@link PaymentGatewayException}.
+     */
+    void refund(RefundRequest request);
+
+    /**
+     * Reverte uma autorização ainda <em>não</em> capturada, liberando o limite
+     * retido no cartão. Usado pela saga de compensação quando o pagamento estava
+     * apenas autorizado. Falhas técnicas propagam como
+     * {@link PaymentGatewayException}.
+     */
+    void voidAuthorization(VoidRequest request);
+
+    /**
      * Requisição de autorização no vocabulário interno do contexto Payment. O
      * adapter traduz estes campos para o formato esperado pelo provedor externo.
      */
@@ -51,6 +79,49 @@ public interface PaymentGateway {
             Objects.requireNonNull(customerId, "customerId");
             Objects.requireNonNull(amount, "amount");
             Objects.requireNonNull(method, "method");
+        }
+    }
+
+    /**
+     * Requisição de captura. Carrega o {@link GatewayTransactionId} devolvido na
+     * autorização — a referência pela qual o provedor externo localiza a
+     * transação a capturar.
+     */
+    record CaptureRequest(
+            PaymentId paymentId,
+            GatewayTransactionId gatewayTransactionId,
+            Money amount
+    ) {
+        public CaptureRequest {
+            Objects.requireNonNull(paymentId, "paymentId");
+            Objects.requireNonNull(gatewayTransactionId, "gatewayTransactionId");
+            Objects.requireNonNull(amount, "amount");
+        }
+    }
+
+    /** Requisição de estorno. {@code reason} é opcional (anotação para o provedor). */
+    record RefundRequest(
+            PaymentId paymentId,
+            GatewayTransactionId gatewayTransactionId,
+            Money amount,
+            String reason
+    ) {
+        public RefundRequest {
+            Objects.requireNonNull(paymentId, "paymentId");
+            Objects.requireNonNull(gatewayTransactionId, "gatewayTransactionId");
+            Objects.requireNonNull(amount, "amount");
+        }
+    }
+
+    /** Requisição de cancelamento de autorização. {@code reason} é opcional. */
+    record VoidRequest(
+            PaymentId paymentId,
+            GatewayTransactionId gatewayTransactionId,
+            String reason
+    ) {
+        public VoidRequest {
+            Objects.requireNonNull(paymentId, "paymentId");
+            Objects.requireNonNull(gatewayTransactionId, "gatewayTransactionId");
         }
     }
 

@@ -55,6 +55,7 @@ import java.util.Objects;
 public final class StripePaymentGateway implements PaymentGateway {
 
     private static final String PAYMENT_INTENTS_PATH = "/v1/payment_intents";
+    private static final String REFUNDS_PATH = "/v1/refunds";
     private static final int HTTP_PAYMENT_REQUIRED = 402;
 
     private final RestClient restClient;
@@ -81,6 +82,97 @@ public final class StripePaymentGateway implements PaymentGateway {
                     "Circuit breaker '" + circuitBreaker.getName()
                             + "' aberto — gateway Stripe considerado indisponível", e);
         }
+    }
+
+    /**
+     * Captura a autorização: {@code POST /v1/payment_intents/{id}/capture}.
+     * Diferente da autorização, não há desfecho de "declínio de negócio" — capturar
+     * uma transação válida sucede ou esbarra numa condição técnica (mapeada para
+     * {@link PaymentGatewayException}).
+     */
+    @Override
+    public void capture(CaptureRequest request) {
+        Objects.requireNonNull(request, "request");
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("amount_to_capture", String.valueOf(toMinorUnits(request.amount())));
+        String path = PAYMENT_INTENTS_PATH + "/" + request.gatewayTransactionId().value() + "/capture";
+        write(path, form, idempotencyKey(request.paymentId().toString(), "capture"), "captura");
+    }
+
+    /** Estorna a captura: {@code POST /v1/refunds} referenciando a transação (charge). */
+    @Override
+    public void refund(RefundRequest request) {
+        Objects.requireNonNull(request, "request");
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("charge", request.gatewayTransactionId().value());
+        form.add("amount", String.valueOf(toMinorUnits(request.amount())));
+        if (request.reason() != null && !request.reason().isBlank()) {
+            form.add("metadata[reason]", request.reason());
+        }
+        write(REFUNDS_PATH, form, idempotencyKey(request.paymentId().toString(), "refund"), "estorno");
+    }
+
+    /** Cancela a autorização não capturada: {@code POST /v1/payment_intents/{id}/cancel}. */
+    @Override
+    public void voidAuthorization(VoidRequest request) {
+        Objects.requireNonNull(request, "request");
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        if (request.reason() != null && !request.reason().isBlank()) {
+            form.add("metadata[reason]", request.reason());
+        }
+        String path = PAYMENT_INTENTS_PATH + "/" + request.gatewayTransactionId().value() + "/cancel";
+        write(path, form, idempotencyKey(request.paymentId().toString(), "void"), "cancelamento");
+    }
+
+    /**
+     * Executa um POST de escrita (captura/estorno/cancelamento) envolvido pelo
+     * circuit breaker. Qualquer não-2xx ou falha de transporte vira
+     * {@link PaymentGatewayException} — não há "declínio" nestas operações sobre
+     * uma transação já autorizada.
+     */
+    private void write(String path, MultiValueMap<String, String> form, String idempotencyKey, String operation) {
+        try {
+            circuitBreaker.executeRunnable(() -> postExpectingSuccess(path, form, idempotencyKey, operation));
+        } catch (CallNotPermittedException e) {
+            throw new PaymentGatewayException(
+                    "Circuit breaker '" + circuitBreaker.getName()
+                            + "' aberto — gateway Stripe considerado indisponível", e);
+        }
+    }
+
+    private void postExpectingSuccess(String path,
+                                      MultiValueMap<String, String> form,
+                                      String idempotencyKey,
+                                      String operation) {
+        try {
+            restClient.post()
+                    .uri(path)
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .exchange((httpRequest, response) -> {
+                        HttpStatusCode status = response.getStatusCode();
+                        if (!status.is2xxSuccessful()) {
+                            throw new PaymentGatewayException("Stripe respondeu status " + status.value()
+                                    + " para " + operation + ": " + readBody(response));
+                        }
+                        return null;
+                    });
+        } catch (PaymentGatewayException e) {
+            throw e; // já classificada como falha técnica
+        } catch (RestClientException e) {
+            throw new PaymentGatewayException(
+                    "Falha de comunicação com o gateway Stripe (" + operation + ")", e);
+        }
+    }
+
+    /**
+     * Chave de idempotência distinta por operação: a Stripe devolve a resposta
+     * cacheada para uma mesma chave, então autorizar e capturar o mesmo pagamento
+     * precisam de chaves diferentes para não colidir.
+     */
+    private static String idempotencyKey(String paymentId, String operation) {
+        return paymentId + ":" + operation;
     }
 
     private AuthorizationResult callStripe(AuthorizationRequest request) {

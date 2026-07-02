@@ -45,6 +45,26 @@ public final class FakePaymentGateway implements PaymentGateway {
     }
 
     /**
+     * Captura, estorno e cancelamento são bem-sucedidos sem rede no fake — o
+     * caminho feliz, honesto para desenvolvimento local. Os desfechos técnicos
+     * (indisponibilidade) são exercitados nos testes por dublês programáveis.
+     */
+    @Override
+    public void capture(CaptureRequest request) {
+        Objects.requireNonNull(request, "request");
+    }
+
+    @Override
+    public void refund(RefundRequest request) {
+        Objects.requireNonNull(request, "request");
+    }
+
+    @Override
+    public void voidAuthorization(VoidRequest request) {
+        Objects.requireNonNull(request, "request");
+    }
+
+    /**
      * Deriva um código de autorização de 6 dígitos do id da transação, imitando
      * o formato de uma adquirente real. Determinístico em relação ao id, o que
      * mantém os testes previsíveis.
