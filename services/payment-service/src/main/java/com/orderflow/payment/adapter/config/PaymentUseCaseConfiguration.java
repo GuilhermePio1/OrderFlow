@@ -4,6 +4,7 @@ import com.orderflow.payment.application.port.PaymentGateway;
 import com.orderflow.payment.application.usecase.AuthorizePaymentUseCase;
 import com.orderflow.payment.application.usecase.CapturePaymentUseCase;
 import com.orderflow.payment.application.usecase.CompensatePaymentUseCase;
+import com.orderflow.payment.application.usecase.RefundPaymentUseCase;
 import com.orderflow.payment.domain.repository.PaymentRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -45,5 +46,13 @@ class PaymentUseCaseConfiguration {
             PaymentGateway paymentGateway
     ) {
         return new CompensatePaymentUseCase(paymentRepository, paymentGateway);
+    }
+
+    @Bean
+    RefundPaymentUseCase refundPaymentUseCase(
+            PaymentRepository paymentRepository,
+            PaymentGateway paymentGateway
+    ) {
+        return new RefundPaymentUseCase(paymentRepository, paymentGateway);
     }
 }
