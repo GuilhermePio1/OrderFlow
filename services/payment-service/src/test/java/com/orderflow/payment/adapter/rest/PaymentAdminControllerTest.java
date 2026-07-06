@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * de rota e o RBAC).
  */
 @WebMvcTest(PaymentAdminController.class)
-@Import({SecurityConfiguration.class, PaymentAuditLogger.class})
+@Import({SecurityConfiguration.class, WebMvcConfiguration.class, PaymentAuditLogger.class})
 @DisplayName("PaymentAdminController")
 class PaymentAdminControllerTest {
 

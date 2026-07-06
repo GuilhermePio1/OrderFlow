@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Console padrão do Spring Boot para os logs de aplicação. -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProperty scope="context" name="appName"
+                    source="spring.application.name" defaultValue="payment-service"/>
+
+    <!-- Trilha de auditoria em JSON estruturado (docs/security.md): campos
+         indexáveis — inclusive valores monetários como numéricos — para a
+         stack de observabilidade rotear ao armazenamento append-only,
+         separado dos logs de aplicação. additivity=false garante que os
+         eventos de auditoria não vazem para o appender de aplicação. -->
+    <appender name="AUDIT_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"log_type":"audit","application":"${appName}"}</customFields>
+        </encoder>
+    </appender>
+
+    <logger name="AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="AUDIT_JSON"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

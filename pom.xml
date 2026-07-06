@@ -14,6 +14,7 @@
     <description>Plataforma Distribuída de Gestão de Pedidos</description>
 
     <modules>
+        <module>libs/orderflow-security</module>
         <module>services/order-service</module>
         <module>services/payment-service</module>
         <module>services/inventory-service</module>
@@ -30,6 +31,7 @@
         <testcontainers.version>1.21.4</testcontainers.version>
         <archunit.version>1.4.2</archunit.version>
         <resilience4j.version>2.4.0</resilience4j.version>
+        <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
     </properties>
 
     <dependencyManagement>
@@ -60,6 +62,11 @@
                 <artifactId>archunit-junit5</artifactId>
                 <version>${archunit.version}</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

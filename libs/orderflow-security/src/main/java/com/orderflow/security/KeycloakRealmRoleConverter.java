@@ -1,4 +1,4 @@
-package com.orderflow.payment.adapter.rest;
+package com.orderflow.security;
 
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,7 +18,7 @@ import java.util.Map;
  * sem este conversor o serviço não enxergaria nenhum role e toda autorização
  * baseada em papel falharia.
  */
-final class KeycloakRealmRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+public final class KeycloakRealmRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
 
     @Override
     public Collection<GrantedAuthority> convert(Jwt jwt) {
