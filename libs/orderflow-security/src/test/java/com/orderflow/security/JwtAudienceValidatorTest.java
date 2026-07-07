@@ -1,4 +1,4 @@
-package com.orderflow.order.adapter.rest;
+package com.orderflow.security;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,20 +13,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class JwtAudienceValidatorTest {
 
     private final JwtAudienceValidator validator =
-            new JwtAudienceValidator(List.of("order-service"));
+            new JwtAudienceValidator(List.of("payment-service"));
 
     @Test
     @DisplayName("aceita token com a audience exigida")
     void acceptsRequiredAudience() {
-        Jwt jwt = jwtWithAudience(List.of("order-service"));
+        Jwt jwt = jwtWithAudience(List.of("payment-service"));
 
         assertThat(validator.validate(jwt).hasErrors()).isFalse();
     }
 
     @Test
-    @DisplayName("rejeita token sem a audience exigida")
+    @DisplayName("rejeita token emitido para outro serviço do mesmo realm")
     void rejectsMissingAudience() {
-        Jwt jwt = jwtWithAudience(List.of("payment-service"));
+        Jwt jwt = jwtWithAudience(List.of("order-service"));
 
         OAuth2TokenValidatorResult result = validator.validate(jwt);
 
@@ -48,7 +48,7 @@ class JwtAudienceValidatorTest {
     @DisplayName("aceita token quando contém a audience exigida junto com outras")
     void acceptsWhenRequiredAudienceIsAmongMultiple() {
         // Token emitido para múltiplos microsserviços
-        Jwt jwt = jwtWithAudience(List.of("inventory-service", "order-service", "payment-service"));
+        Jwt jwt = jwtWithAudience(List.of("inventory-service", "payment-service", "order-service"));
 
         assertThat(validator.validate(jwt).hasErrors()).isFalse();
     }

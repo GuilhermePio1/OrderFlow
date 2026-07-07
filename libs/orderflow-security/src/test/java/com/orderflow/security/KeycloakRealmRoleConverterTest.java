@@ -1,4 +1,4 @@
-package com.orderflow.order.adapter.rest;
+package com.orderflow.security;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,13 +19,13 @@ class KeycloakRealmRoleConverterTest {
     @Test
     @DisplayName("mapeia realm roles para authorities ROLE_ normalizadas")
     void mapsRealmRolesToAuthorities() {
-        Jwt jwt = jwtWithRealmRoles(List.of("customer", "order-admin"));
+        Jwt jwt = jwtWithRealmRoles(List.of("customer", "payment-admin"));
 
         Collection<GrantedAuthority> authorities = converter.convert(jwt);
 
         assertThat(authorities)
                 .extracting(GrantedAuthority::getAuthority)
-                .containsExactlyInAnyOrder("ROLE_CUSTOMER", "ROLE_ORDER_ADMIN");
+                .containsExactlyInAnyOrder("ROLE_CUSTOMER", "ROLE_PAYMENT_ADMIN");
     }
 
     @Test
@@ -56,15 +56,14 @@ class KeycloakRealmRoleConverterTest {
         // Simula um payload onde o Keycloak (ou um atacante) enviou um número e um booleano na lista
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
-                .claim("realm_access", Map.of("roles", List.of("customer", 123, true)))
+                .claim("realm_access", Map.of("roles", List.of("payment-admin", 123, true)))
                 .build();
 
         Collection<GrantedAuthority> authorities = converter.convert(jwt);
 
-        // Deve extrair apenas a string válida e ignorar os tipos incorretos
         assertThat(authorities)
                 .extracting(GrantedAuthority::getAuthority)
-                .containsExactly("ROLE_CUSTOMER");
+                .containsExactly("ROLE_PAYMENT_ADMIN");
     }
 
     @Test
@@ -85,5 +84,4 @@ class KeycloakRealmRoleConverterTest {
                 .claim("realm_access", Map.of("roles", roles))
                 .build();
     }
-
 }

@@ -60,6 +60,9 @@ management:
         enabled: true
 
 orderflow:
+  security:
+    # Audiences aceitas no claim `aud` do JWT (lista separada por vírgula).
+    audiences: payment-service
   payment:
     gateway: ${PAYMENT_GATEWAY:fake}
     # OrderPlaced não carrega o meio de pagamento no contrato atual do Ordering;

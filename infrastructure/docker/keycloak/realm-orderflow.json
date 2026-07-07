@@ -38,7 +38,19 @@
       },
       {
         "name": "admin",
-        "description": "Administrador da plataforma OrderFlow."
+        "description": "Administrador da plataforma OrderFlow. Composto: herda os papéis administrativos de cada contexto.",
+        "composite": true,
+        "composites": {
+          "realm": ["order-admin", "payment-admin"]
+        }
+      },
+      {
+        "name": "order-admin",
+        "description": "Administrador do contexto Ordering: pode criar, consultar e cancelar pedidos em nome de terceiros (ROLE_ORDER_ADMIN no order-service)."
+      },
+      {
+        "name": "payment-admin",
+        "description": "Administrador do contexto Payment: acesso de back-office a pagamentos e estornos administrativos (ROLE_PAYMENT_ADMIN no payment-service)."
       },
       {
         "name": "service",
